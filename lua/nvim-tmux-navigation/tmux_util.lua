@@ -3,19 +3,31 @@ local util = {}
 local tmux_directions = { ['p'] = 'l', ['h'] = 'L', ['j'] = 'D', ['k'] = 'U', ['l'] = 'R', ['n'] = 't:.+' }
 
 -- send the tmux command to the server running on the socket
--- given by the environment variable $TMUX
+-- given by the environment variable $TMUX.
+-- `command` must be a list of string arguments, since it is not
+-- interpreted by a shell.
 --
 -- the check if tmux is actually running (so the variable $TMUX is
 -- not nil) is made before actually calling this function
 local function tmux_command(command)
     local tmux_socket = vim.fn.split(vim.env.TMUX, ',')[1]
-    return vim.fn.system("tmux -S " .. tmux_socket .. " " .. command)
+    -- `system` does not go through the shell if it is given a
+    -- list rather than a single string; this is critical because
+    -- shells like Fish are very slow, and we don't want to add
+    -- its startup latency to every single pane switch
+    --
+    -- `unpack` was deprecated in Lua 5.1 in favor of
+    -- `table.unpack`; to be safe we use whichever one exists in
+    -- the user's environment.
+    -- source: https://github.com/hrsh7th/nvim-cmp/issues/1017
+    local args = {"tmux", "-S", tmux_socket, (unpack or table.unpack)(command)}
+    return vim.fn.system(args)
 end
 
 -- check whether the current tmux pane is zoomed
 local function is_tmux_pane_zoomed()
     -- the output of the tmux command is "1\n", so we have to test against that
-    return tmux_command("display-message -p '#{window_zoomed_flag}'") == "1\n"
+    return tmux_command({"display-message", "-p", "#{window_zoomed_flag}"}) == "1\n"
 end
 
 -- whether tmux should take control over the navigation
@@ -28,7 +40,7 @@ end
 
 -- change the current pane according to direction
 function util.tmux_change_pane(direction)
-    tmux_command("select-pane -" .. tmux_directions[direction])
+    tmux_command({"select-pane", "-" .. tmux_directions[direction]})
 end
 
 -- capitalization util, only capitalizes the first character of the whole word
